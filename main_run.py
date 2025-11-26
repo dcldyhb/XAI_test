@@ -18,12 +18,15 @@ from SAC_gama.replay_memory import ReplayMemory
 from SAC_gama.sac import SAC
 from SAC_gama.microgrid_env_complex_v11 import IEEE33Env  # 使用 v11 环境（含 info 输出）
 
+# --- 导入配置 ---
+from config import DEVICE, DATASET_PATH, OUTPUTS_ROOT, FONT_SANS_SERIF
+
 # --- 环境设置 ---
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 warnings.filterwarnings("ignore", category=np.VisibleDeprecationWarning)
 
-# 显示中文
-matplotlib.rcParams["font.sans-serif"] = ["SimHei", "Microsoft YaHei", "Arial Unicode MS"]
+# 显示中文 (使用 config 配置)
+matplotlib.rcParams["font.sans-serif"] = FONT_SANS_SERIF
 matplotlib.rcParams["axes.unicode_minus"] = False
 
 # ========== 参数解析 ==========
@@ -50,8 +53,10 @@ parser.add_argument("--eval_episodes", type=int, default=1)
 args = parser.parse_args()
 
 # ========== 数据集读取 ==========
-csv_path = r"dataset/dataset_ieee33_extreme.csv"
-data = pd.read_csv(csv_path)
+print(f"读取数据集: {DATASET_PATH}")
+if not os.path.exists(DATASET_PATH):
+    raise FileNotFoundError(f"未找到数据集文件: {DATASET_PATH}")
+data = pd.read_csv(DATASET_PATH)
 
 # ========== 随机种子 ==========
 if args.seed is None or args.seed < 0:
@@ -75,19 +80,19 @@ try:
     if hasattr(agent, "automatic_entropy_tuning"):
         agent.automatic_entropy_tuning = False
     if hasattr(agent, "alpha"):
-        agent.alpha = torch.tensor(0.2, dtype=torch.float32)
+        agent.alpha = torch.tensor(0.2, dtype=torch.float32).to(DEVICE)
 except Exception as _e:
     print("[warn] alpha fix tweak skipped:", _e)
 
-current_dir = os.path.dirname(os.path.abspath(__file__))
-
-# 1. 定义总输出根目录: XAI_test/outputs/
-outputs_root = os.path.join(current_dir, "outputs")
+# 1. 使用 config 中的 OUTPUTS_ROOT
+timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+run_name = f"{timestamp}_{args.env_name}_{args.policy}"
+save_dir = os.path.join(OUTPUTS_ROOT, run_name) # <--- 这里用了 config
 
 # 2. 定义本次实验的独立文件夹: outputs/时间戳_环境名_策略/
 timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 run_name = f"{timestamp}_{args.env_name}_{args.policy}"
-save_dir = os.path.join(outputs_root, run_name)
+save_dir = os.path.join(OUTPUTS_ROOT, run_name)
 
 # 3. 创建目录
 os.makedirs(save_dir, exist_ok=True)
@@ -111,7 +116,8 @@ memory = ReplayMemory(args.replay_size, args.seed)
 
 # 生成一个随机的 gamma 示例（根据实际需求可以更改）
 def generate_gamma(batch_size, n_heads):
-    return torch.rand(batch_size, n_heads).to(torch.device('cuda' if args.cuda else 'cpu'))
+    # 使用全局 DEVICE (自动适配 M4/CUDA)
+    return torch.rand(batch_size, n_heads).to(DEVICE)
 
 # 在训练过程中的每一步，生成 gamma 向量并传递给 policy
 
