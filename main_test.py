@@ -1,17 +1,4 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Thu Oct  9 16:39:14 2025
-
-@author: 12392
-"""
-
-# -*- coding: utf-8 -*-
-"""
-Created on Wed Oct  8 22:13:39 2025
-
-@author: 12392
-"""
-
 # main.py
 import argparse
 import datetime
@@ -63,7 +50,7 @@ parser.add_argument("--eval_episodes", type=int, default=1)
 args = parser.parse_args()
 
 # ========== 数据集读取 ==========
-csv_path = r"C:\Users\33302\Desktop\lySAC_gama\dataset_ieee33_extreme_full.csv"
+csv_path = r"dataset/dataset_ieee33_extreme.csv"
 data = pd.read_csv(csv_path)
 
 # ========== 随机种子 ==========
@@ -92,27 +79,25 @@ try:
 except Exception as _e:
     print("[warn] alpha fix tweak skipped:", _e)
 
-log_dir = r"C:\Users\33302\Desktop\XAI_for_Microgrid_Optimization\dataset_ieee33_extreme_full.csv"
-if os.path.exists(log_dir):
-    print('找到对应文件夹runs')
-    if not os.path.isdir(log_dir):
-        print('runs不是个文件夹')
-        os.remove(log_dir)  # 删除同名文件
-        os.makedirs(log_dir)
-else:
-    os.makedirs(log_dir)
+current_dir = os.path.dirname(os.path.abspath(__file__))
 
-writer = SummaryWriter(
-    os.path.join(
-        log_dir,
-        "{}_SAC_{}_{}_{}".format(
-            datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
-            args.env_name,
-            args.policy,
-            "autotune" if args.automatic_entropy_tuning else "",
-        )
-    )
-)
+# 1. 定义总输出根目录: XAI_test/outputs/
+outputs_root = os.path.join(current_dir, "outputs")
+
+# 2. 定义本次实验的独立文件夹: outputs/时间戳_环境名_策略/
+timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+run_name = f"{timestamp}_{args.env_name}_{args.policy}"
+save_dir = os.path.join(outputs_root, run_name)
+
+# 3. 创建目录
+os.makedirs(save_dir, exist_ok=True)
+print(f"[Output] 本次运行的所有结果将保存至: {save_dir}")
+
+# 4. 设置 TensorBoard 日志目录到子文件夹 logs/
+log_dir = os.path.join(save_dir, "logs")
+os.makedirs(log_dir, exist_ok=True)
+
+writer = SummaryWriter(log_dir)
 
 
 memory = ReplayMemory(args.replay_size, args.seed)
@@ -197,340 +182,271 @@ writer.close()
 # ========== 可视化（选取最后一个 episode 的 infos） ==========
 infos = infos_all[-1]  # 使用最后一个 episode 的数据
 
-def plot_microgrid_power_from_info(infos, env):
+# ==============================================================================
+# 绘图与可视化函数群 (优化版：支持输出到 save_dir)
+# ==============================================================================
+
+def plot_all_node_voltages(voltages, hours, env, save_dir=None):
     """
-    绘制微电网多源功率分布 + 系统能量平衡图 + 各储能SOC变化曲线 + 节点电压曲线
-    （修改：同一储能设备充放电颜色保持一致）
+    绘制所有33个节点的电压变化曲线
     """
     try:
-        # ======= 提取信息 =======
+        fig, ax = plt.subplots(figsize=(16, 10))
+        n_nodes = voltages.shape[1]
+        colors = plt.cm.viridis(np.linspace(0, 1, n_nodes))
+        
+        for node in range(n_nodes):
+            is_key_node = node in [0, 10, 20, 32]
+            alpha = 0.8 if is_key_node else 0.3
+            linewidth = 2.5 if is_key_node else 1.0
+            label = f'Node {node}' if is_key_node else ""
+            
+            ax.plot(hours, voltages[:, node], color=colors[node], 
+                   alpha=alpha, linewidth=linewidth, label=label)
+        
+        ax.axhline(env.vmax, color="red", linestyle="--", linewidth=2, label='Limit')
+        ax.axhline(env.vmin, color="red", linestyle="--", linewidth=2)
+        
+        ax.set_xlabel("Time (Hour)")
+        ax.set_ylabel("Voltage (p.u.)")
+        ax.set_title("All 33 Nodes Voltage Profile")
+        ax.legend(loc='upper right', fontsize=10)
+        ax.grid(True, alpha=0.3)
+        
+        # 添加Colorbar
+        sm = plt.cm.ScalarMappable(cmap=plt.cm.viridis, norm=plt.Normalize(0, n_nodes-1))
+        cbar = plt.colorbar(sm, ax=ax)
+        cbar.set_label('Node Index')
+        
+        plt.tight_layout()
+        
+        if save_dir:
+            plt.savefig(os.path.join(save_dir, "plot_all_nodes_voltage.png"), dpi=300)
+            print(f"[Plot] 全节点电压图已保存")
+            
+        plt.show()
+        plt.close()
+    except Exception as e:
+        print(f"绘制全节点电压图失败: {e}")
+
+def plot_voltage_heatmap(voltages, hours, env, save_dir=None):
+    """
+    绘制节点电压热力图
+    """
+    try:
+        fig, ax = plt.subplots(figsize=(14, 8))
+        heatmap_data = voltages.T
+        
+        im = ax.imshow(heatmap_data, aspect='auto', cmap='RdYlBu_r', 
+                      extent=[hours[0], hours[-1], 0, voltages.shape[1]-1],
+                      vmin=env.vmin, vmax=env.vmax)
+        
+        ax.set_xlabel("Time (Hour)")
+        ax.set_ylabel("Node Index")
+        ax.set_title("Node Voltage Heatmap")
+        
+        cbar = plt.colorbar(im, ax=ax)
+        cbar.set_label('Voltage (p.u.)')
+        plt.tight_layout()
+        
+        if save_dir:
+            plt.savefig(os.path.join(save_dir, "plot_voltage_heatmap.png"), dpi=300)
+            print(f"[Plot] 电压热力图已保存")
+            
+        plt.show()
+        plt.close()
+    except Exception as e:
+        print(f"绘制热力图失败: {e}")
+
+def plot_microgrid_power_from_info(infos, env, save_dir=None):
+    """
+    主绘图函数：微电网多源功率 + 能量平衡 + SOC + 关键节点电压
+    """
+    try:
+        # ======= 1. 数据提取 =======
         n_ess = env.n_batt
         n_pv = env.n_pv
         n_wind = env.n_wind
 
-        batt_p = np.array([info.get("batt_p", np.zeros(n_ess)) for info in infos])  # [T, n_ess]
-        p_ch = np.array([info.get("p_ch", np.zeros(n_ess)) for info in infos])
-        p_dis = np.array([info.get("p_dis", np.zeros(n_ess)) for info in infos])
+        batt_p = np.array([info.get("batt_p", np.zeros(n_ess)) for info in infos])
         pv_p = np.array([info.get("pv_p", np.zeros(n_pv)) for info in infos])
         wind_p = np.array([info.get("wind_p", np.zeros(n_wind)) for info in infos])
         grid_p = np.array([info.get("grid_kW", 0.0) for info in infos])
         socs = np.array([info.get("soc", np.zeros(n_ess)) for info in infos])
         prices = np.array([info.get("price", 0.0) for info in infos])
         load_p = np.array([info.get("load_kW", 0.0) for info in infos])
-        voltages = np.array([info.get("voltages", np.zeros(len(env.net.bus))) for info in infos])  # 节点电压
+        voltages = np.array([info.get("voltages", np.zeros(len(env.net.bus))) for info in infos])
 
         T = len(infos)
         hours = np.arange(T)
 
-        # 汇总
         total_ess_p = batt_p.sum(axis=1)
         total_pv = pv_p.sum(axis=1)
         total_wind = wind_p.sum(axis=1)
         total_gen = total_ess_p + total_pv + total_wind
 
-        # ==================== 图1：多源功率堆叠 ====================
-        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12), sharex=True)
+        # ======= 2. 绘制四子图 =======
+        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(18, 12), sharex=True)
         
-        # 储能功率堆叠：正为放电，负为充电（充放电同色）
+        # --- 子图1: 功率堆叠 ---
         bottom_pos = np.zeros(T)
         bottom_neg = np.zeros(T)
-        ess_colors = ["#203864", "#305496", "#4472C4", "#5B9BD5", "#8EA9DB",
-                      "#A9D18E", "#548235", "#BF9000", "#7F6000", "#7030A0"]
+        ess_colors = ["#203864", "#305496", "#4472C4", "#5B9BD5", "#8EA9DB"]
 
         for i in range(n_ess):
             dis = np.where(batt_p[:, i] > 0, batt_p[:, i], 0)
             chg = np.where(batt_p[:, i] < 0, batt_p[:, i], 0)
-            color = ess_colors[i % len(ess_colors)]  # 同一ESS同色
-            ax1.bar(hours, dis, bottom=bottom_pos, color=color, width=0.6, label=f"ESS{i+1}")
+            color = ess_colors[i % len(ess_colors)]
+            ax1.bar(hours, dis, bottom=bottom_pos, color=color, width=0.6, label=f"ESS{i}")
             ax1.bar(hours, chg, bottom=bottom_neg, color=color, width=0.6)
             bottom_pos += dis
             bottom_neg += chg
 
-        # 加上风电与光伏
-        ax1.bar(hours, total_wind, bottom=bottom_pos, color="#00B0F0", width=0.6, label="风电")
-        ax1.bar(hours, total_pv, bottom=bottom_pos + total_wind, color="#FFD966", width=0.6, label="光伏")
+        ax1.bar(hours, total_wind, bottom=bottom_pos, color="#00B0F0", width=0.6, label="Wind")
+        ax1.bar(hours, total_pv, bottom=bottom_pos + total_wind, color="#FFD966", width=0.6, label="PV")
+        ax1.plot(hours, grid_p, color="red", linewidth=2, marker="x", label="Grid")
 
-        # 并网功率
-        ax1.plot(hours, grid_p, color="red", linewidth=2.2, marker="x", label="并网功率 Grid Power")
-
-        # 电价曲线（右轴）
         ax1b = ax1.twinx()
-        ax1b.plot(hours, prices, color="black", linestyle="--", linewidth=2, label="电价 (RMB/kWh)")
-        ax1b.set_ylabel("电价 (RMB/kWh)")
+        ax1b.plot(hours, prices, "k--", alpha=0.5, label="Price")
+        ax1.set_title("Source Power Dispatch")
+        ax1.legend(loc="upper left", ncol=3, fontsize=8)
 
-        ax1.axhline(0, color="k", linewidth=0.8)
-        ax1.set_ylabel("功率 / kW")
-        ax1.set_title("微电网多源功率分布")
-        ax1.grid(True, linestyle="--", alpha=0.5)
+        # --- 子图2: 能量平衡 ---
+        mismatch = (total_gen + grid_p) - load_p
+        ax2.plot(hours, total_gen, "g", label="Renewable+ESS")
+        ax2.plot(hours, grid_p, "r", label="Grid")
+        ax2.plot(hours, load_p, "purple", label="Load")
+        ax2.plot(hours, mismatch, "k--", label="Mismatch")
+        ax2.set_title("Power Balance")
+        ax2.legend()
 
-        # 合并主轴与副轴图例
-        lines_labels = [ax1.get_legend_handles_labels() for ax1 in [ax1, ax1b]]
-        lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
-        ax1.legend(lines, labels, ncol=3, fontsize=8, loc="upper left")
-
-        # ==================== 图2：系统能量平衡 ====================
-        total_load = load_p
-        total_gen_plus_grid = total_gen + grid_p
-        mismatch = total_gen_plus_grid - total_load
-
-        ax2.plot(hours, total_gen, color="green", linewidth=2, label="可再生 + 储能总出力")
-        ax2.plot(hours, grid_p, color="red", linewidth=2, label="并网功率")
-        ax2.plot(hours, total_load, color="purple", linewidth=2, label="负荷需求")
-        ax2.plot(hours, mismatch, color="black", linestyle="--", linewidth=1.5, label="系统能量平衡（mismatch≈0理想）")
-
-        ax2.axhline(0, color="k", linewidth=0.8)
-        ax2.set_xlabel("时间步（小时）")
-        ax2.set_ylabel("功率 / kW")
-        ax2.set_title("系统能量平衡图")
-        ax2.grid(True, linestyle="--", alpha=0.5)
-        ax2.legend(fontsize=9, loc="upper left")
-
-        # ==================== 图3：SOC曲线 ====================
+        # --- 子图3: SOC ---
         for i in range(n_ess):
-            ax3.plot(hours, socs[:, i], label=f"ESS{i+1} SOC", linewidth=2)
-
-        # 检查 SOC 限制
-        if hasattr(env, 'SOC_max') and hasattr(env, 'SOC_min'):
-            soc_max = env.SOC_max
-            soc_min = env.SOC_min
-        else:
-            soc_max = 1.0
-            soc_min = 0.0
-            print("使用默认 SOC 限制: [0.0, 1.0]")
-
-        ax3.axhline(soc_max, color="r", linestyle="--", alpha=0.7, label='SOC_max')
-        ax3.axhline(soc_min, color="r", linestyle="--", alpha=0.7, label='SOC_min')
-
-        ax3.set_title("各储能设备 SOC 变化曲线")
-        ax3.set_xlabel("时间步")
-        ax3.set_ylabel("SOC")
-        ax3.grid(True, linestyle="--", alpha=0.5)
+            ax3.plot(hours, socs[:, i], label=f"ESS{i}")
+        soc_max = getattr(env, 'SOC_max', 1.0)
+        soc_min = getattr(env, 'SOC_min', 0.0)
+        ax3.axhline(soc_max, color='r', linestyle='--')
+        ax3.axhline(soc_min, color='r', linestyle='--')
+        ax3.set_title("Battery SOC")
         ax3.legend()
 
-        # ==================== 图4：关键节点电压曲线 ====================
-        # 绘制关键节点的电压（例如：首节点、中间节点、末端节点）
-        key_nodes = [0, 10, 20, 32]  # 关键节点索引
-        node_labels = ['节点0 (首端)', '节点10', '节点20', '节点32 (末端)']
-        
-        for i, node_idx in enumerate(key_nodes):
-            if node_idx < voltages.shape[1]:
-                ax4.plot(hours, voltages[:, node_idx], label=node_labels[i], linewidth=2)
-        
-        # 添加电压上下限
-        ax4.axhline(env.vmax, color="r", linestyle="--", alpha=0.7, label='电压上限')
-        ax4.axhline(env.vmin, color="r", linestyle="--", alpha=0.7, label='电压下限')
-        
-        ax4.set_title("关键节点电压变化曲线")
-        ax4.set_xlabel("时间步")
-        ax4.set_ylabel("电压 (p.u.)")
-        ax4.grid(True, linestyle="--", alpha=0.5)
+        # --- 子图4: 关键节点电压 ---
+        key_nodes = [0, 10, 20, 32]
+        for node in key_nodes:
+            if node < voltages.shape[1]:
+                ax4.plot(hours, voltages[:, node], label=f"Node {node}")
+        ax4.axhline(env.vmax, color='r', linestyle='--')
+        ax4.axhline(env.vmin, color='r', linestyle='--')
+        ax4.set_title("Key Nodes Voltage")
         ax4.legend()
 
         plt.tight_layout()
+
+        if save_dir:
+            plt.savefig(os.path.join(save_dir, "plot_summary.png"), dpi=300)
+            print(f"[Plot] 综合分析图已保存")
+
         plt.show()
+        plt.close()
 
-        # ==================== 新增：所有节点电压曲线图 ====================
-        plot_all_node_voltages(voltages, hours, env)
-        
-        # ==================== 新增：电压热力图 ====================
-        plot_voltage_heatmap(voltages, hours, env)
-
-        # ==================== 保存节点电压数据 ====================
-        save_voltage_data(voltages, hours, env)
+        # 调用其他绘图函数
+        plot_all_node_voltages(voltages, hours, env, save_dir)
+        plot_voltage_heatmap(voltages, hours, env, save_dir)
 
     except Exception as e:
-        print(f"绘图时发生错误: {e}")
+        print(f"绘图主程序出错: {e}")
         import traceback
         traceback.print_exc()
 
-def plot_all_node_voltages(voltages, hours, env):
+def save_voltage_data(voltages, hours, env, save_dir):
     """
-    绘制所有33个节点的电压变化曲线
-    """
-    try:
-        # 创建一个大图来显示所有节点
-        fig, ax = plt.subplots(figsize=(16, 10))
-        
-        # 使用颜色映射，根据节点位置分配颜色
-        n_nodes = voltages.shape[1]
-        colors = plt.cm.viridis(np.linspace(0, 1, n_nodes))
-        
-        # 绘制所有节点的电压曲线
-        for node in range(n_nodes):
-            # 使用透明度区分不同节点，避免过于混乱
-            alpha = 0.7 if node in [0, 10, 20, 32] else 0.4  # 关键节点更明显
-            linewidth = 2.0 if node in [0, 10, 20, 32] else 1.0
-            
-            ax.plot(hours, voltages[:, node], 
-                   color=colors[node], 
-                   alpha=alpha, 
-                   linewidth=linewidth,
-                   label=f'Node {node}' if node in [0, 10, 20, 32] else "")
-        
-        # 添加电压上下限
-        ax.axhline(env.vmax, color="red", linestyle="--", linewidth=2, alpha=0.8, label='电压上限')
-        ax.axhline(env.vmin, color="red", linestyle="--", linewidth=2, alpha=0.8, label='电压下限')
-        
-        # 设置图表属性
-        ax.set_xlabel("时间 (小时)")
-        ax.set_ylabel("电压 (p.u.)")
-        ax.set_title("所有节点电压变化曲线")
-        ax.grid(True, linestyle="--", alpha=0.3)
-        
-        # 只显示关键节点的图例，避免图例过多
-        ax.legend(loc='upper right', fontsize=10)
-        
-        # 添加颜色条表示节点编号
-        sm = plt.cm.ScalarMappable(cmap=plt.cm.viridis, 
-                                  norm=plt.Normalize(vmin=0, vmax=n_nodes-1))
-        sm.set_array([])
-        cbar = plt.colorbar(sm, ax=ax)
-        cbar.set_label('节点编号')
-        
-        plt.tight_layout()
-        plt.show()
-        
-        print(f"✅ 已绘制所有 {n_nodes} 个节点的电压变化曲线")
-        
-    except Exception as e:
-        print(f"绘制所有节点电压曲线时发生错误: {e}")
-        import traceback
-        traceback.print_exc()
-
-def plot_voltage_heatmap(voltages, hours, env):
-    """
-    绘制节点电压热力图，直观显示电压分布
+    保存节点电压数据 (优化版：修复索引BUG，输出到指定目录)
     """
     try:
-        fig, ax = plt.subplots(figsize=(14, 8))
-        
-        # 创建热力图数据
-        heatmap_data = voltages.T  # 转置，使节点在y轴，时间在x轴
-        
-        # 绘制热力图
-        im = ax.imshow(heatmap_data, aspect='auto', cmap='RdYlBu_r', 
-                      extent=[hours[0], hours[-1], 0, voltages.shape[1]-1],
-                      vmin=env.vmin, vmax=env.vmax)
-        
-        # 设置坐标轴
-        ax.set_xlabel("时间 (小时)")
-        ax.set_ylabel("节点编号")
-        ax.set_title("节点电压热力图")
-        
-        # 添加颜色条
-        cbar = plt.colorbar(im, ax=ax)
-        cbar.set_label('电压 (p.u.)')
-        
-        # 设置y轴刻度，显示所有节点
-        ax.set_yticks(range(voltages.shape[1]))
-        ax.set_yticklabels([f'Node {i}' for i in range(voltages.shape[1])])
-        
-        # 添加网格
-        ax.grid(True, alpha=0.3)
-        
-        plt.tight_layout()
-        plt.show()
-        
-        print("✅ 已生成节点电压热力图")
-        
-    except Exception as e:
-        print(f"绘制电压热力图时发生错误: {e}")
-        import traceback
-        traceback.print_exc()
-
-def save_voltage_data(voltages, hours, env):
-    """
-    保存24个时间点的各节点电压数据到CSV文件
-    """
-    try:
-        # 创建DataFrame，行为时间点，列为节点
         voltage_df = pd.DataFrame(voltages, 
                                  index=[f"Hour_{h}" for h in hours],
                                  columns=[f"Node_{i}" for i in range(len(env.net.bus))])
         
-        # 添加时间戳列
         voltage_df['Hour'] = hours
-        voltage_df['Timestamp'] = pd.date_range(start='2025-01-01', periods=len(hours), freq='H')
+        voltage_df['Timestamp'] = pd.date_range(start='2025-01-01', periods=len(hours), freq='h')
         
-        # 重新排列列顺序，将时间和节点分开
         cols = ['Hour', 'Timestamp'] + [f"Node_{i}" for i in range(len(env.net.bus))]
         voltage_df = voltage_df[cols]
         
-        # 保存到CSV文件
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"node_voltages_{timestamp}.csv"
-        voltage_df.to_csv(filename, index=False, encoding='utf-8-sig')
+        if save_dir:
+            file_path = os.path.join(save_dir, "node_voltages.csv")
+            voltage_df.to_csv(file_path, index=False, encoding='utf-8-sig')
+            print(f" [CSV] 节点电压数据已保存: {file_path}")
         
-        print(f"✅ 节点电压数据已保存到: {filename}")
-        print(f"   数据包含 {len(hours)} 个时间点和 {len(env.net.bus)} 个节点")
+        # 统计信息与Debug修复
+        min_val = np.min(voltages)
+        max_val = np.max(voltages)
         
-        # 打印统计信息
-        print("\n📊 电压统计信息:")
-        print(f"   平均电压范围: {np.min(voltages):.4f} - {np.max(voltages):.4f} p.u.")
-        print(f"   电压越限次数: {np.sum((voltages < env.vmin) | (voltages > env.vmax))}")
+        # 使用 unravel_index 修复之前的 IndexError
+        min_hour_idx, min_node_idx = np.unravel_index(np.argmin(voltages), voltages.shape)
+        max_hour_idx, max_node_idx = np.unravel_index(np.argmax(voltages), voltages.shape)
         
-        # 找出电压最低和最高的节点
-        min_voltage_node = np.argmin(voltages, axis=1)
-        max_voltage_node = np.argmax(voltages, axis=1)
-        
-        print(f"   最低电压出现: 节点{min_voltage_node[np.argmin(voltages)]} (值: {np.min(voltages):.4f} p.u.)")
-        print(f"   最高电压出现: 节点{max_voltage_node[np.argmax(voltages)]} (值: {np.max(voltages):.4f} p.u.)")
+        print("\n 电压统计信息:")
+        print(f"  平均电压范围: {min_val:.4f} - {max_val:.4f} p.u.")
+        print(f"  最低电压: {min_val:.4f} (Hour {hours[min_hour_idx]}, Node {min_node_idx})")
+        print(f"  最高电压: {max_val:.4f} (Hour {hours[max_hour_idx]}, Node {max_node_idx})")
         
         return voltage_df
-        
     except Exception as e:
-        print(f"保存电压数据时发生错误: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f" 保存电压数据失败: {e}")
         return None
 
-# 调用绘图函数
-voltage_data = plot_microgrid_power_from_info(infos, env)
-
-# 额外保存一份详细的分析报告
-def save_voltage_analysis_report(infos, env):
+def save_voltage_analysis_report(infos, env, save_dir):
     """
-    生成并保存详细的电压分析报告
+    保存分析报告 (优化版：输出到指定目录)
     """
     try:
         voltages = np.array([info.get("voltages", np.zeros(len(env.net.bus))) for info in infos])
         hours = np.arange(len(infos))
         
-        # 创建详细的分析报告
         report_data = []
-        
         for hour in hours:
             hour_voltages = voltages[hour]
-            min_voltage = np.min(hour_voltages)
-            max_voltage = np.max(hour_voltages)
-            min_node = np.argmin(hour_voltages)
-            max_node = np.argmax(hour_voltages)
-            violation_count = np.sum((hour_voltages < env.vmin) | (hour_voltages > env.vmax))
-            
             report_data.append({
                 'Hour': hour,
-                'Min_Voltage': min_voltage,
-                'Max_Voltage': max_voltage,
-                'Min_Node': min_node,
-                'Max_Node': max_node,
-                'Violation_Count': violation_count,
+                'Min_Voltage': np.min(hour_voltages),
+                'Max_Voltage': np.max(hour_voltages),
+                'Min_Node': np.argmin(hour_voltages),
+                'Max_Node': np.argmax(hour_voltages),
+                'Violation_Count': np.sum((hour_voltages < env.vmin) | (hour_voltages > env.vmax)),
                 'Avg_Voltage': np.mean(hour_voltages)
             })
         
         report_df = pd.DataFrame(report_data)
         
-        # 保存分析报告
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        report_filename = f"voltage_analysis_report_{timestamp}.csv"
-        report_df.to_csv(report_filename, index=False, encoding='utf-8-sig')
-        
-        print(f"✅ 电压分析报告已保存到: {report_filename}")
-        
+        if save_dir:
+            file_path = os.path.join(save_dir, "voltage_analysis_report.csv")
+            report_df.to_csv(file_path, index=False, encoding='utf-8-sig')
+            print(f"[CSV] 电压分析报告已保存: {file_path}")
+            
         return report_df
-        
     except Exception as e:
-        print(f"生成电压分析报告时发生错误: {e}")
+        print(f"保存分析报告失败: {e}")
         return None
 
-# 生成电压分析报告
-voltage_report = save_voltage_analysis_report(infos, env)
+# ==============================================================================
+# 最终执行 (使用新的 save_dir)
+# ==============================================================================
+if len(infos_all) > 0:
+    print("\n 开始生成可视化图表...")
+    infos = infos_all[-1]
+    
+    # 1. 保存 CSV
+    save_voltage_data(
+        voltages=np.array([i.get("voltages") for i in infos]), 
+        hours=np.arange(len(infos)), 
+        env=env, 
+        save_dir=save_dir 
+    )
+    
+    save_voltage_analysis_report(infos, env, save_dir)
+
+    # 2. 绘图并自动保存
+    plot_microgrid_power_from_info(infos, env, save_dir)
+    
+    print(f"\n 所有结果已归档至: {save_dir}")

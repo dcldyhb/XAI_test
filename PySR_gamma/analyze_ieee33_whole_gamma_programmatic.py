@@ -16,7 +16,7 @@ print(f"所有输出结果将被保存在目录: '{output_dir}'\n")
 
 # --- 2. 数据加载与预处理 ---
 
-file_path = 'PySR_gamma/dataset/dataset_ieee33_extreme.csv' 
+file_path = 'dataset/dataset_ieee33_extreme.csv' 
 try:
     df = pd.read_csv(file_path)
     print(f"成功从 '{file_path}' 加载数据。\n")

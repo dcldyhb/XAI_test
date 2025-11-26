@@ -2,8 +2,8 @@ import os
 import torch
 import torch.nn.functional as F
 from torch.optim import Adam
-from utils import soft_update, hard_update
-from .model_gamma import GaussianPolicy, QNetwork, DeterministicPolicy
+from SAC_gama.utils import soft_update, hard_update
+from SAC_gama.model_gamma import GaussianPolicy, QNetwork, DeterministicPolicy
 import numpy as np
 
 
@@ -95,7 +95,7 @@ class SAC(object):
             alpha_tlogs = self.alpha.clone()
         else:
             alpha_loss = torch.tensor(0.).to(self.device)
-            alpha_tlogs = torch.tensor(self.alpha)
+            alpha_tlogs = self.alpha.clone().detach() # 使用 clone().detach() 来避免警告，且更安全
 
         if updates % self.target_update_interval == 0:
             soft_update(self.critic_target, self.critic, self.tau)
