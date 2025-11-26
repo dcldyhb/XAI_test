@@ -1,0 +1,58 @@
+# ===========================
+# 1. 操作系统垃圾文件
+# ===========================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ===========================
+# 2. Python 编译与缓存
+# ===========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+anaconda3/
+
+# ===========================
+# 3. IDE 与编辑器配置
+# ===========================
+.idea/
+.vscode/
+*.swp
+*.swo
+.spyproject/
+.spyderproject
+
+# ===========================
+# 4. 项目输出与日志 (最重要)
+# ===========================
+# TensorBoard 日志
+runs/
+
+# 我们刚才建立的统一输出目录
+outputs/
+
+# 以前遗留的临时 CSV 结果 (如果根目录下还有的话)
+node_voltages_*.csv
+voltage_analysis_report_*.csv
+
+# PySR 生成的临时文件 (保留 output_vector 里的 gamma_calculator.py 吗？)
+# 如果 gamma_calculator.py 是每次运行生成的且不需要版本控制，取消下面行的注释
+# PySR_gamma/output_vector/
+
+# ===========================
+# 5. 其他
+# ===========================
+# Jupyter Notebook 检查点
+.ipynb_checkpoints/
