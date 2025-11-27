@@ -13,7 +13,6 @@ output_dir = 'PySR_gamma/output_vector'
 os.makedirs(output_dir, exist_ok=True)
 print(f"所有输出结果将被保存在目录: '{output_dir}'\n")
 
-
 # --- 2. 数据加载与预处理 ---
 
 file_path = 'dataset/dataset_ieee33_extreme.csv' 
