@@ -9,10 +9,6 @@ import sys
 # 获取项目根目录的绝对路径
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
-# 将项目根目录加入系统路径，确保能从任何子文件夹 import 根目录的模块
-if PROJECT_ROOT not in sys.path:
-    sys.path.append(PROJECT_ROOT)
-
 # 数据集路径
 DATASET_PATH = os.path.join(PROJECT_ROOT, "dataset", "dataset_ieee33_extreme.csv")
 

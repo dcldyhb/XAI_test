@@ -6,7 +6,6 @@ from SAC_gama.utils import soft_update, hard_update
 from SAC_gama.model_gamma import GaussianPolicy, QNetwork, DeterministicPolicy
 import numpy as np
 
-
 class SAC(object):
     def __init__(self, num_inputs, action_space, args):
         self.gamma = args.gamma
@@ -17,7 +16,7 @@ class SAC(object):
         self.target_update_interval = args.target_update_interval
         self.automatic_entropy_tuning = args.automatic_entropy_tuning
 
-        self.device = torch.device("cuda" if args.cuda else "cpu")
+        self.device = getattr(args, 'device', torch.device("cpu")) # 确保 device 从 args 中获取
 
         self.critic = QNetwork(num_inputs, action_space.shape[0], args.hidden_size).to(self.device)
         self.critic_optim = Adam(self.critic.parameters(), lr=args.lr)

@@ -52,6 +52,9 @@ parser.add_argument("--eval_every", type=int, default=10)
 parser.add_argument("--eval_episodes", type=int, default=1)
 args = parser.parse_args()
 
+# --- 依赖注入 ---
+args.device = DEVICE
+
 # ========== 数据集读取 ==========
 print(f"读取数据集: {DATASET_PATH}")
 if not os.path.exists(DATASET_PATH):
