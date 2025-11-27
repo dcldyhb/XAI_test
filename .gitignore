@@ -40,8 +40,12 @@ anaconda3/
 # TensorBoard 日志
 runs/
 
-# 我们刚才建立的统一输出目录
+# 统一输出目录
 outputs/
+
+# 符号回归输出目录
+
+PySR_gamma/output_vector/
 
 # 以前遗留的临时 CSV 结果 (如果根目录下还有的话)
 node_voltages_*.csv
