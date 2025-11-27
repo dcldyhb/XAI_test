@@ -4,39 +4,39 @@
 
 项目通过符号回归（PySR）挖掘环境特征生成 `gamma` 因子，辅助 Soft Actor-Critic (SAC) 智能体进行更高效、可解释的决策。
 
-## 📂 项目结构
+## 项目结构
 
 ```text
 XAI_test/
-├── main_run.py                 # [入口] 主程序：负责训练 SAC 智能体并调用绘图
-├── main.py                     # 不知道什么用的一个主程序
-├── requirements.txt            # 项目依赖列表（已锁定版本以防冲突）
-├── config.py                   # (可选) 全局路径与设备配置
+├── main_run.py                     # [入口] 主程序：负责训练 SAC 智能体并调用绘图
+├── main.py                         # 不知道什么用的一个主程序
+├── requirements.txt                # 项目依赖列表（已锁定版本以防冲突）
+├── config.py                       # 全局路径与设备配置
 │
-├── dataset/                    # 数据集目录
+├── dataset/                        # 数据集目录
 │   └── dataset_ieee33_extreme.csv  # IEEE 33 节点微电网负荷与光伏数据
 │
-├── PySR_gamma/                 # [模块 1] 符号回归模块
-│   ├── analyze_ieee33...py     # PySR 运行脚本，用于挖掘公式
-│   └── output_vector/          # PySR 输出结果
-│       ├── gamma_calculator.py # 自动生成的公式计算代码（供 SAC 调用）
+├── PySR_gamma/                     # [模块 1] 符号回归模块
+│   ├── analyze_ieee33...py         # PySR 运行脚本，用于挖掘公式
+│   └── output_vector/              # PySR 输出结果
+│       ├── gamma_calculator.py     # 自动生成的公式计算代码（供 SAC 调用）
 │       └── ...
 │
-├── SAC_gama/                   # [模块 2] 强化学习核心算法
-│   ├── sac.py                  # Soft Actor-Critic 算法实现
-│   ├── microgrid_env...v11.py  # IEEE 33 节点微电网仿真环境 (基于 Pandapower)
-│   ├── model_gamma.py          # 神经网络模型定义
-│   └── replay_memory.py        # 经验回放池
+├── SAC_gama/                       # [模块 2] 强化学习核心算法
+│   ├── sac.py                      # SAC 算法实现
+│   ├── microgrid_env...v11.py      # IEEE 33 节点微电网仿真环境 (基于 Pandapower)
+│   ├── model_gamma.py              # 神经网络模型定义
+│   └── replay_memory.py            # 经验回放池
 │
-└── outputs/                    # [结果] 实验结果归档（自动生成）
-    └── YYYY-MM-DD_HH-MM-SS.../ # 每次运行的独立文件夹
-        ├── logs/               # TensorBoard 训练日志
-        ├── node_voltages.csv   # 节点电压详细数据
-        ├── plot_summary.png    # 综合分析图表（功率、SOC、电压）
+└── outputs/                        # 实验结果归档（自动生成）
+    └── YYYY-MM-DD_HH-MM-SS.../     # 每次运行的独立文件夹
+        ├── logs/                   # TensorBoard 训练日志
+        ├── node_voltages.csv       # 节点电压详细数据
+        ├── plot_summary.png        # 综合分析图表（功率、SOC、电压）
         └── ...
 ```
 
-## 🛠️ 安装与环境配置
+## 安装与环境配置
 
 建议使用 Conda 创建 Python 3.9 环境：
 
@@ -55,7 +55,7 @@ pip install -r requirements.txt
 
 ## 🏃‍♂️ 运行指南
 
-### 第一步：运行 PySR 符号回归 (可选)
+### 第一步：运行 PySR 符号回归
 
 如果你需要重新生成特征公式：
 
@@ -70,13 +70,13 @@ python PySR_gamma/analyze_ieee33_whole_gamma_programmatic.py
 加载数据、环境与生成的公式，开始训练并自动保存结果：
 
 ```bash
-python main.py
+python main_run.py
 ```
 
 - 程序会自动检测你的硬件（CUDA/MPS/CPU）。
 - 训练完成后，会自动进行绘图并保存。
 
-## 📊 结果输出
+## 结果输出
 
 运行结束后，请查看 `outputs/` 文件夹下的最新目录。包含以下内容：
 
@@ -89,14 +89,3 @@ python main.py
     - `voltage_analysis_report.csv`: 越限分析报告。
 3.  **训练日志**：
     - `logs/`: 可使用 TensorBoard 查看 (`tensorboard --logdir outputs/`)。
-
-## ⚙️ 技术栈
-
-- **强化学习**: PyTorch, Soft Actor-Critic (SAC)
-- **可解释性 AI**: PySR (Symbolic Regression in Julia/Python)
-- **电力系统仿真**: Pandapower
-- **环境接口**: OpenAI Gym (Legacy)
-
----
-
-**License**: MIT
